@@ -27,42 +27,45 @@ class CSVStorage:
         with open(self.path, 'a', newline='\n') as file:
             writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             writer.writerow([row['name'], row['year'], row['city'], row['price'], row['url']])
-            print(f'saved: {row["name"]}')
+
+    def save_page(self, page):
+        for row in page:
+            try:
+                self.save_row(row)
+            except UnicodeEncodeError:
+                print('Unicode error')
+                pass
 
     def save_data(self, data):
         for page in data:
-            for row in page:
-                try:
-                    self.save_row(row)
-                except UnicodeEncodeError:
-                    print('Unicode error')
-                    pass
+            self.save_page(page)
 
 
-async def fetch(url, session):
+async def fetch(url, session, storage):
     async with session.get(url) as response:
         page_content = await response.text()
         print(f'fetched {url}')
-        return page_content
+        data = read_html(page_content)
+        storage.save_page(data)
 
 
-async def bound_fetch(url, session, sm):
+async def bound_fetch(url, session, storage, sm):
     try:
         async with sm:
-            return await fetch(url, session)
+            return await fetch(url, session, storage)
     except TimeoutError as e:
         print(e)
         sleep(30)
 
 
-async def parse_data():
+async def parse_data(storage):
     headers = {"User-Agent": "Mozilla/5.001 (windows; U; NT4.0; en-US; rv:1.0) Gecko/25250101"}
     sm = asyncio.Semaphore(50)
     tasks = []
     async with ClientSession(headers=headers) as session:
-        for page_num in range(1, 1001):
+        for page_num in range(1, 10):
             url = f'https://kolesa.kz/cars/?page={page_num}'
-            task = asyncio.ensure_future(bound_fetch(url, session, sm))
+            task = asyncio.ensure_future(bound_fetch(url, session, storage, sm))
             tasks.append(task)
 
         result_cor = await asyncio.gather(*tasks)
@@ -96,16 +99,8 @@ def run_parser(path=''):
 
     # parsing data
     loop = asyncio.get_event_loop()
-    future = asyncio.ensure_future(parse_data())
+    future = asyncio.ensure_future(parse_data(storage))
     loop.run_until_complete(future)
-    pages = future.result()
-
-    # writing data tot storage
-    dataset = []
-    for page in pages:
-        data = read_html(page)
-        dataset.append(data)
-    storage.save_data(dataset)
 
 
 if __name__ == "__main__":
@@ -119,9 +114,9 @@ if __name__ == "__main__":
 
     # if script runs without path to CSV file, data will be collected from website
     if os.path.exists(path_to_file):
-        name = str(uuid.uuid4())
-        path_to_file = os.path.dirname(__file__) + '/' + name + '.csv'
-        if input(f'File with this name exists. Program can write new file with name {name}\n'
+        file_name = str(uuid.uuid4())
+        path_to_file = os.path.dirname(__file__) + '/' + file_name + '.csv'
+        if input(f'File with this name exists. Program can write new file with name {file_name}\n'
                  f'Do you want continue "y"?') == 'y':
             pass
         else:
