@@ -15,11 +15,6 @@ class CSVStorage:
             writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             writer.writerow(['name', 'year', 'city', 'price', 'url'])
 
-    def collect_cache(self):
-        with open(self.path, 'r') as file:
-            pass
-        return []
-
     def save_row(self, row):
         with open(self.path, 'a', newline='\n') as file:
             writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -102,6 +97,7 @@ def read_html(html_text):
 def run_parser(path, pages_count):
     # creating CSV storage
     storage = CSVStorage(path)
+    storage.create_table()
 
     # parsing data
     loop = asyncio.get_event_loop()
