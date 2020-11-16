@@ -55,12 +55,12 @@ async def bound_fetch(url, session, storage, sm):
         sleep(30)
 
 
-async def parse_data(storage):
+async def parse_data(storage, pages_count):
     headers = {"User-Agent": "Mozilla/5.001 (windows; U; NT4.0; en-US; rv:1.0) Gecko/25250101"}
     sm = asyncio.Semaphore(50)
     tasks = []
     async with ClientSession(headers=headers) as session:
-        for page_num in range(1, 2):
+        for page_num in range(1, pages_count + 1):
             url = f'https://kolesa.kz/cars/?page={page_num}'
             task = asyncio.ensure_future(bound_fetch(url, session, storage, sm))
             tasks.append(task)
@@ -99,12 +99,11 @@ def read_html(html_text):
     return cars
 
 
-def run_parser(path=''):
+def run_parser(path, pages_count):
     # creating CSV storage
     storage = CSVStorage(path)
-    storage.create_table()
 
     # parsing data
     loop = asyncio.get_event_loop()
-    future = asyncio.ensure_future(parse_data(storage))
+    future = asyncio.ensure_future(parse_data(storage, pages_count))
     loop.run_until_complete(future)
