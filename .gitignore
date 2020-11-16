@@ -1,4 +1,5 @@
 venv/
+venv32/
 .idea/
 /data.csv
 /savings/

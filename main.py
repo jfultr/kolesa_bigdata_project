@@ -1,124 +1,27 @@
-import asyncio
-import sys
-import re
-import csv
 import os.path
-import uuid
-from aiohttp import ClientSession
-from time import sleep
-from bs4 import BeautifulSoup
-
-
-class CSVStorage:
-    def __init__(self, path):
-        self.path = path
-
-    def create_table(self):
-        with open(self.path, 'w', newline='\n') as file:
-            writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(['name', 'year', 'city', 'price', 'url'])
-
-    def collect_cache(self):
-        with open(self.path, 'r') as file:
-            pass
-        return []
-
-    def save_row(self, row):
-        with open(self.path, 'a', newline='\n') as file:
-            writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow([row['name'], row['year'], row['city'], row['price'], row['url']])
-
-    def save_page(self, page):
-        for row in page:
-            try:
-                self.save_row(row)
-            except UnicodeEncodeError:
-                print('Unicode error')
-                pass
-
-    def save_data(self, data):
-        for page in data:
-            self.save_page(page)
-
-
-async def fetch(url, session, storage):
-    async with session.get(url) as response:
-        page_content = await response.text()
-        print(f'fetched {url}')
-        data = read_html(page_content)
-        storage.save_page(data)
-
-
-async def bound_fetch(url, session, storage, sm):
-    try:
-        async with sm:
-            return await fetch(url, session, storage)
-    except TimeoutError as e:
-        print(e)
-        sleep(30)
-
-
-async def parse_data(storage):
-    headers = {"User-Agent": "Mozilla/5.001 (windows; U; NT4.0; en-US; rv:1.0) Gecko/25250101"}
-    sm = asyncio.Semaphore(50)
-    tasks = []
-    async with ClientSession(headers=headers) as session:
-        for page_num in range(1, 10):
-            url = f'https://kolesa.kz/cars/?page={page_num}'
-            task = asyncio.ensure_future(bound_fetch(url, session, storage, sm))
-            tasks.append(task)
-
-        result_cor = await asyncio.gather(*tasks)
-    return result_cor
-
-
-def read_html(html_text):
-    cars = []
-    soup = BeautifulSoup(html_text, 'html.parser')
-    blocks = soup('div', class_='row vw-item list-item a-elem')
-    blocks_blue = soup('div', class_='row vw-item list-item blue a-elem')
-    blocks_yellow = soup('div', class_='row vw-item list-item yellow a-elem')
-    all_blocks = blocks + blocks_blue + blocks_yellow
-    for block in all_blocks:
-        name = block.find('span', class_='a-el-info-title').text.strip()
-        year = block.find('div', class_='a-search-description').text.strip()[:4]
-        price = block.find('span', class_='price').text.strip()
-        price = re.sub('\xa0', '', price)
-        price = re.sub('₸', '', price)
-        city = block.find('div', class_='list-region').text.strip()
-        url = 'https://kolesa.kz' + block.find('a', class_='list-link ddl_product_link').get('href').strip()
-        car = {'name': name, 'year': year, 'city': city, 'price': price, 'url': url}
-        cars.append(car)
-    return cars
-
-
-def run_parser(path=''):
-    # creating CSV storage
-    storage = CSVStorage(path)
-    storage.create_table()
-
-    # parsing data
-    loop = asyncio.get_event_loop()
-    future = asyncio.ensure_future(parse_data(storage))
-    loop.run_until_complete(future)
+import argparse
+from kolesa_parser import run_parser
+from predict import get_predict
 
 
 if __name__ == "__main__":
-    try:
-        path_to_file = sys.argv[1]
-    except IndexError:
-        raise AttributeError('Please enter file name')
+    arg_parser = argparse.ArgumentParser(
+        description="Enter full or relative path for file with data. "
+                    "If file with data not exists program will create new dataset "
+                    "and name it with the entered name")
+    arg_parser.add_argument('path', metavar='p', type=str, help='path to file with data')
 
-    if '\\' not in path_to_file:
+    args = arg_parser.parse_args()
+    path_to_file = args.path
+    if ':' not in path_to_file:
         path_to_file = os.path.dirname(__file__) + '/' + path_to_file
 
     # if script runs without path to CSV file, data will be collected from website
-    if os.path.exists(path_to_file):
-        file_name = str(uuid.uuid4())
-        path_to_file = os.path.dirname(__file__) + '/' + file_name + '.csv'
-        if input(f'File with this name exists. Program can write new file with name {file_name}\n'
-                 f'Do you want continue "y"?') == 'y':
-            pass
+    if not os.path.exists(path_to_file):
+        if input(f'Program starting scraping data from kolesa.kz'
+                 f'it can take a long time and not so safe'
+                 f'Enter "y" to continue') == 'y':
+            run_parser(path_to_file)
         else:
             exit()
-    run_parser(path_to_file)
+    get_predict(path_to_file)
