@@ -9,16 +9,18 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 
 
 class CombinedAttributesAdder(BaseEstimator, TransformerMixin):
     def __init__(self):
         pass
 
-    def fit(self):
+    def fit(self, x, y=None):
         return self
 
-    def transform(self):
+    def transform(self, x):
         # here will added new features
         pass
 
@@ -64,10 +66,11 @@ def draw_plots_to_research_data(data):  # just to draw some plots
 
 def preprocessing(train_set):
     data = train_set.drop('price', axis=1)
+    data_labels = train_set['price'].copy()
     data_num = data.drop(['name', 'city'], axis=1)
     num_pipeline = Pipeline([
         ('imputer', SimpleImputer(strategy='median')),
-        ('attribs_adder', CombinedAttributesAdder()),
+        # ('attribs_adder', CombinedAttributesAdder()),
         ('std_scaler', StandardScaler())
     ])
     num_attribs = list(data_num)
@@ -75,14 +78,19 @@ def preprocessing(train_set):
 
     full_pipeline = ColumnTransformer([
         ('num', num_pipeline, num_attribs),
-        ('cat', OneHotEncoder, cat_attribs)
+        ('cat', OneHotEncoder(), cat_attribs)
     ])
-
-    return full_pipeline.fit_transform(data)
+    prepared_data = full_pipeline.fit_transform(data)
+    return prepared_data, data_labels
 
 
 def get_predict(path):
     data = load_data(path).reset_index()
     data = data.drop('url', axis=1)
     train_set, test_set = split_train_test(data, 0.2, 'price')
-    prepared_data = preprocessing(train_set)
+    prepared_data, data_labels = preprocessing(train_set)
+
+    # fit with LR and predict
+    lin_reg = LinearRegression()
+    lin_reg.fit(prepared_data, data_labels)
+    prediction = lin_reg.predict(prepared_data)
