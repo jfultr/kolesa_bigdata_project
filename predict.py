@@ -3,6 +3,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.impute import SimpleImputer
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.compose import ColumnTransformer
+
+
+class CombinedAttributesAdder(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass
+
+    def fit(self):
+        return self
+
+    def transform(self):
+        # here will added new features
+        pass
 
 
 def load_data(path):
@@ -17,8 +35,8 @@ def split_train_test(data, test_ratio, id_column):
     strat_test_set = None
     ceil_k = 2500000  # Коэффицент маштабирования, чтобы ограничить количество страт
     sever = 15000000  # Граница ценны автомобиля после которой все автомобили совмещаються в одну страту
-    data['_cat'] = np.ceil(data[id_column]/ceil_k)
-    data['_cat'].where(data['_cat'] < sever/ceil_k, sever/ceil_k, inplace=True)
+    data['_cat'] = np.ceil(data[id_column] / ceil_k)
+    data['_cat'].where(data['_cat'] < sever / ceil_k, sever / ceil_k, inplace=True)
 
     split = StratifiedShuffleSplit(n_splits=1, test_size=test_ratio, random_state=42)
 
@@ -44,8 +62,27 @@ def draw_plots_to_research_data(data):  # just to draw some plots
     plt.show()
 
 
+def preprocessing(train_set):
+    data = train_set.drop('price', axis=1)
+    data_num = data.drop(['name', 'city'], axis=1)
+    num_pipeline = Pipeline([
+        ('imputer', SimpleImputer(strategy='median')),
+        ('attribs_adder', CombinedAttributesAdder()),
+        ('std_scaler', StandardScaler())
+    ])
+    num_attribs = list(data_num)
+    cat_attribs = ['name', 'city']
+
+    full_pipeline = ColumnTransformer([
+        ('num', num_pipeline, num_attribs),
+        ('cat', OneHotEncoder, cat_attribs)
+    ])
+
+    return full_pipeline.fit_transform(data)
+
+
 def get_predict(path):
     data = load_data(path).reset_index()
+    data = data.drop('url', axis=1)
     train_set, test_set = split_train_test(data, 0.2, 'price')
-
-
+    prepared_data = preprocessing(train_set)
