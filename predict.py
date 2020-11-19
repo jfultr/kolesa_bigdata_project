@@ -9,7 +9,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 
 
@@ -84,13 +83,36 @@ def preprocessing(train_set):
     return prepared_data, data_labels
 
 
+def get_model(model, prepared_data, data_labels):
+    if model == 'LR':
+        from sklearn.linear_model import LinearRegression
+        # fit with LR and predict
+        lin_reg = LinearRegression()
+        lin_reg.fit(prepared_data, data_labels)
+        return lin_reg
+
+    elif model == 'DTR':
+        from sklearn.tree import DecisionTreeRegressor
+        # fit with DTR
+        tree_reg = DecisionTreeRegressor()
+        tree_reg.fit(prepared_data, data_labels)
+        return tree_reg
+
+    elif model == 'RFR':
+        from sklearn.ensemble import RandomForestRegressor
+        # fit with RFR
+        forest_reg = RandomForestRegressor()
+        forest_reg.fit(prepared_data, data_labels)
+        return forest_reg
+
+    else:
+        raise AttributeError(f'you cant chose "{model}"')
+
+
 def get_predict(path):
     data = load_data(path).reset_index()
     data = data.drop('url', axis=1)
     train_set, test_set = split_train_test(data, 0.2, 'price')
     prepared_data, data_labels = preprocessing(train_set)
+    model = get_model('RFR', prepared_data, data_labels)
 
-    # fit with LR and predict
-    lin_reg = LinearRegression()
-    lin_reg.fit(prepared_data, data_labels)
-    prediction = lin_reg.predict(prepared_data)
