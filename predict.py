@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import joblib
 
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.impute import SimpleImputer
@@ -9,7 +10,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GridSearchCV
+
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import RandomForestRegressor
 
 
 class CombinedAttributesAdder(BaseEstimator, TransformerMixin):
@@ -83,36 +89,67 @@ def preprocessing(train_set):
     return prepared_data, data_labels
 
 
-def get_model(model, prepared_data, data_labels):
-    if model == 'LR':
-        from sklearn.linear_model import LinearRegression
-        # fit with LR and predict
-        lin_reg = LinearRegression()
-        lin_reg.fit(prepared_data, data_labels)
-        return lin_reg
-
-    elif model == 'DTR':
-        from sklearn.tree import DecisionTreeRegressor
-        # fit with DTR
-        tree_reg = DecisionTreeRegressor()
-        tree_reg.fit(prepared_data, data_labels)
-        return tree_reg
-
-    elif model == 'RFR':
-        from sklearn.ensemble import RandomForestRegressor
-        # fit with RFR
-        forest_reg = RandomForestRegressor()
-        forest_reg.fit(prepared_data, data_labels)
-        return forest_reg
-
-    else:
-        raise AttributeError(f'you cant chose "{model}"')
+def loading_models(f):
+    def wrap_loading(*args, load=True):
+        name = str(args[0]) + '-' + f.__name__ + '.pkl'
+        if load:
+            try:
+                return joblib.load(name)
+            except FileNotFoundError:
+                print(f'{name} model not saved. Creating new..')
+        result = f(*args)
+        joblib.dump(result, name)
+        return result
+    return wrap_loading
 
 
-def get_predict(path):
+@loading_models
+def get_model(kind, prepared_data, data_labels):
+    models = {
+        'LR': LinearRegression,
+        'DTR': DecisionTreeRegressor,
+        'RFR': RandomForestRegressor
+    }
+    try:
+        model = models[kind]()
+    except KeyError:
+        raise KeyError(f'{kind} not using as model, please choose from: {models}')
+    model.fit(prepared_data, data_labels)
+    joblib.dump(model, f'{kind}'+'.pkl')
+    return model
+
+
+@loading_models
+def get_tune_model(model, prepared_data, data_labels):
+    param_grid = [
+        {'n_estimators': [3, 10, 30], 'max_features': [2, 4, 6, 8]},
+        {'bootstrap': [False], 'n_estimators': [3, 10], 'max_features': [2, 3, 4]},
+    ]
+    grid_search = GridSearchCV(model, param_grid, cv=5,
+                               scoring='neg_mean_squared_error',
+                               return_train_score=True)
+
+    grid_search.fit(prepared_data, data_labels)
+    return grid_search
+
+
+def check_cross_val_score(model, prepared_data, data_labels):
+    scores = cross_val_score(model, prepared_data, data_labels,
+                             scoring='neg_mean_squared_error', cv=5)
+    tree_rmse_scores = np.sqrt(-scores)
+    print(tree_rmse_scores)
+
+
+def get_predict(path, model_kind):
     data = load_data(path).reset_index()
     data = data.drop('url', axis=1)
     train_set, test_set = split_train_test(data, 0.2, 'price')
     prepared_data, data_labels = preprocessing(train_set)
-    model = get_model('RFR', prepared_data, data_labels)
+    model = get_model(model_kind, prepared_data, data_labels, load=True)
+    search = get_tune_model(model, prepared_data, data_labels, load=True)
+
+    cv = search.cv_results_
+    for mean in cv['mean_test_score']:
+        print(np.sqrt(-mean))
+
 

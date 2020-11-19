@@ -28,4 +28,4 @@ if __name__ == "__main__":
             run_parser(path_to_file, pages_num)
         else:
             exit()
-    get_predict(path_to_file)
+    get_predict(path_to_file, 'RFR')
