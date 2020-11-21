@@ -4,6 +4,7 @@ import csv
 from aiohttp import ClientSession
 from time import sleep
 from bs4 import BeautifulSoup
+from geopy.geocoders import Nominatim
 
 
 class CSVStorage:
@@ -13,12 +14,12 @@ class CSVStorage:
     def create_table(self):
         with open(self.path, 'w', newline='\n') as file:
             writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(['name', 'year', 'city', 'price', 'url'])
+            writer.writerow(['name', 'year', 'latitude', 'longitude', 'price', 'url'])
 
     def save_row(self, row):
         with open(self.path, 'a', newline='\n') as file:
             writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow([row['name'], row['year'], row['city'], row['price'], row['url']])
+            writer.writerow([row['name'], row['year'], row['latitude'], row['longitude'], row['price'], row['url']])
 
     def save_page(self, page):
         for row in page:
@@ -64,6 +65,12 @@ async def parse_data(storage, pages_count):
     return result_cor
 
 
+def get_location(city_name):
+    geolocator = Nominatim(user_agent='kolesa_parser')
+    location = geolocator.geocode(city_name)
+    return location.latitude, location.longitude
+
+
 def format_data(name, year, price, city, url):
     name = name.strip()
     year = year.strip()[:4]
@@ -71,8 +78,9 @@ def format_data(name, year, price, city, url):
     price = re.sub('\xa0', '', price)
     price = re.sub('₸', '', price)
     city = city.strip()
+    latitude, longitude = get_location(city)
     url = ('https://kolesa.kz' + url.strip())
-    car = {'name': name, 'year': year, 'city': city, 'price': price, 'url': url}
+    car = {'name': name, 'year': year, 'latitude': latitude, 'longitude': longitude, 'price': price, 'url': url}
     return car
 
 

@@ -1,6 +1,5 @@
 venv/
-venv32/
-venv38-64/
 .idea/
 /data.csv
-/savings/
+*.csv
+*.pkl

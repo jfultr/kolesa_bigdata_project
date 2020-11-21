@@ -91,7 +91,7 @@ def preprocessing(train_set):
 
 def loading_models(f):
     def wrap_loading(*args, load=True):
-        name = str(args[0]) + '-' + f.__name__ + '.pkl'
+        name = 'models/' + str(args[0]) + '-' + f.__name__ + '.pkl'
         if load:
             try:
                 return joblib.load(name)
@@ -100,6 +100,7 @@ def loading_models(f):
         result = f(*args)
         joblib.dump(result, name)
         return result
+
     return wrap_loading
 
 
@@ -115,20 +116,34 @@ def get_model(kind, prepared_data, data_labels):
     except KeyError:
         raise KeyError(f'{kind} not using as model, please choose from: {models}')
     model.fit(prepared_data, data_labels)
-    joblib.dump(model, f'{kind}'+'.pkl')
     return model
 
 
 @loading_models
-def get_tune_model(model, prepared_data, data_labels):
-    param_grid = [
-        {'n_estimators': [3, 10, 30], 'max_features': [2, 4, 6, 8]},
-        {'bootstrap': [False], 'n_estimators': [3, 10], 'max_features': [2, 3, 4]},
-    ]
+def get_tune_model(kind, model, prepared_data, data_labels):
+    params = \
+        {'RFR':
+            [
+                {'n_estimators': [3, 10, 30], 'max_features': [2, 4, 6, 8]},
+                {'bootstrap': [False], 'n_estimators': [3, 10], 'max_features': [2, 3, 4]}
+            ],
+         'LR':
+            [
+                {}
+            ],
+         'DTR':
+            [
+                {'max_features': [25, 230, 300, 500]}
+            ]}
+
+    try:
+        param_grid = params[kind]
+    except KeyError:
+        raise KeyError(f'{kind} haven\'t parameters for GridSearchCV, please choose from: {params.keys()}')
+
     grid_search = GridSearchCV(model, param_grid, cv=5,
                                scoring='neg_mean_squared_error',
                                return_train_score=True)
-
     grid_search.fit(prepared_data, data_labels)
     return grid_search
 
@@ -141,15 +156,14 @@ def check_cross_val_score(model, prepared_data, data_labels):
 
 
 def get_predict(path, model_kind):
-    data = load_data(path).reset_index()
+    data = load_data(path)
     data = data.drop('url', axis=1)
     train_set, test_set = split_train_test(data, 0.2, 'price')
     prepared_data, data_labels = preprocessing(train_set)
     model = get_model(model_kind, prepared_data, data_labels, load=True)
-    search = get_tune_model(model, prepared_data, data_labels, load=True)
+    search = get_tune_model(model_kind, model, prepared_data, data_labels, load=True)
 
-    cv = search.cv_results_
-    for mean in cv['mean_test_score']:
-        print(np.sqrt(-mean))
+    print(np.sqrt(-search.best_score_))
+
 
 
