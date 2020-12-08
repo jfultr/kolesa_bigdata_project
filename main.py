@@ -1,7 +1,7 @@
 import os.path
 import argparse
 from kolesa_parser import run_parser
-from predict import get_predict
+from predict import get_predict_model
 
 
 if __name__ == "__main__":
@@ -24,7 +24,11 @@ if __name__ == "__main__":
         if input(f'Program starting scraping data from kolesa.kz\n'
                  f'it can take a long time and not so safe\n'
                  f'Enter "y" to continue: ') == 'y':
-            run_parser(path_to_file)
+            run_parser(path_to_file, update)
         else:
             exit()
-    # get_predict(path_to_file, 'RFR')
+    predict = get_predict_model(path_to_file, 'DTR')
+    # print(predict.get_predict('Toyota Camry', '2012', 'Алматы', '171000', '2.5', 'Да'))
+    # print(predict.get_predict('ВАЗ (Lada) 2170 (седан)', '2011', 'Алматы', '', '1.6', 'Да'))
+    # print(predict.get_predict('Nissan Primera', '2002', 'Алматы', None, '2', 'Да'))
+
