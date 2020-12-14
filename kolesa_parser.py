@@ -1,6 +1,5 @@
 import asyncio
 import re
-import csv
 import os
 import pandas as pd
 from aiohttp import ClientSession
@@ -9,7 +8,8 @@ from time import sleep
 from bs4 import BeautifulSoup
 
 
-progress = 0
+PARSING_COLUMN = ['brand', 'model', 'year', 'city', 'latitude', 'longitude', 'price', 'mileage', 'capacity', 'body',
+                  'color', 'transmission', 'drive', 'url']
 
 
 class CSVStorage:
@@ -17,38 +17,14 @@ class CSVStorage:
         self.path = path
         self.attributes = attributes
 
-    def create_table(self):
-        with open(self.path, 'w', newline='\n') as file:
-            writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(self.attributes)
+    def create_empty(self):
+        pd.DataFrame(columns=self.attributes).to_csv(self.path, index=False)
 
-    def save_row(self, row: dict):
-        with open(self.path, 'a', newline='\n', encoding='utf-8') as file:
-            writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow([row[atr] for atr in self.attributes])
-            global progress
-            progress += 1
-            print('{} {:.2f}'.format(progress, progress/117761 * 100))
+    def save(self, data: pd.DataFrame):
+        data.to_csv(self.path, mode='a', header=False, index=False)
 
-    def save_page(self, page):
-        for row in page:
-            try:
-                self.save_row(row)
-            except UnicodeEncodeError as e:
-                print('Unicode error', e)
-                pass
-
-    def save_data(self, data):
-        for page in data:
-            self.save_page(page)
-
-    def load_columns(self, columns):
-        with open(self.path, 'r') as file:
-            reader = csv.DictReader(file)
-            data = []
-            for row in reader:
-                data.append(tuple([row[column] for column in columns]))
-            return data
+    def load(self) -> pd.DataFrame:
+        return pd.read_csv(self.path)
 
 
 async def fetch(url, session):
@@ -73,17 +49,18 @@ async def get_urls_page(brand, page_num, session, urls, sm):
     url = f'https://kolesa.kz/cars/{brand}/?page={page_num}'
     task, _ = await bound_fetch(url, session, sm)
     urls_page = read_html_urls(task)
-    urls.save_page(urls_page)
+    urls.save(pd.DataFrame(urls_page))
 
 
 async def parse_urls(brands, urls):
     headers = {"User-Agent": "Mozilla/5.001 (windows; U; NT4.0; en-US; rv:1.0) Gecko/25250101"}
     sm = asyncio.Semaphore(50)
     tasks = []
+
     async with ClientSession(headers=headers) as session:
-        for brand, count in brands.load_columns(['brand', 'url_count']):
-            for page_num in range(1, int(count) // 20 + 2):
-                task = asyncio.ensure_future(get_urls_page(brand, page_num, session, urls, sm))
+        for row in brands.load().itertuples():
+            for page_num in range(1, int(row.count) // 20 + 2):
+                task = asyncio.ensure_future(get_urls_page(row.brand, page_num, session, urls, sm))
                 tasks.append(task)
         result_cor = await asyncio.gather(*tasks)
     return result_cor
@@ -96,7 +73,7 @@ async def get_car_data(storage, session, url, sm):
     except AttributeError:
         print('error')
         return
-    storage.save_row(car)
+    storage.save(pd.DataFrame().from_dict(car))
 
 
 async def parse_data(storage, urls):
@@ -105,7 +82,6 @@ async def parse_data(storage, urls):
     tasks = []
     async with ClientSession(headers=headers) as session:
         for url in urls:
-
             task = asyncio.ensure_future(get_car_data(storage, session, url, sm))
             tasks.append(task)
         result_cor = await asyncio.gather(*tasks)
@@ -130,9 +106,9 @@ def process_data(brand, model, year, city, price, mileage, capacity, body, color
             _.append(None)
     brand, model, year, city, price, mileage, capacity, body, color, transmission, drive, price = _
 
-    car = {'brand': brand, 'model': model, 'year': year, 'city': city, 'latitude': None, 'longitude': None, 'price': price,
-           'mileage': mileage, 'capacity': capacity, 'body': body, 'color': color, 'transmission': transmission,
-           'drive': drive, 'url': url}
+    car = {'brand': [brand], 'model': [model], 'year': [year], 'city': [city], 'latitude': [None], 'longitude': [None],
+           'price': [price], 'mileage': [mileage], 'capacity': [capacity], 'body': [body], 'color': [color],
+           'transmission': [transmission], 'drive': [drive], 'url': [url]}
     return car
 
 
@@ -178,11 +154,17 @@ def read_html_urls(html_text):
     return urls
 
 
-def get_prepared_urls(storage):
-    urls = storage.load_columns(['url'])
-    unique = set(urls)
-    print('Unique urls: ', len(unique))
-    return list(unique)
+def get_prepared_urls(data, urls, update):
+    prepared_urls = urls.load()
+    prepared_urls.drop_duplicates(keep=False)
+    prepared_urls = prepared_urls['url']
+    print('Unique urls: ', len(prepared_urls))
+
+    if update:
+        parsed_urls = data.load()
+        parsed_urls = parsed_urls['url']
+        prepared_urls = pd.concat([prepared_urls, parsed_urls, parsed_urls]).drop_duplicates(keep=False)
+    return prepared_urls
 
 
 def run_parser(data_path, update=False):
@@ -191,33 +173,23 @@ def run_parser(data_path, update=False):
 
     # creating urls storage
     urls_storage = CSVStorage(urls_path, ['url'])
-    # urls_storage.create_table()
-
-    # creating car brands storage
     brands_storage = CSVStorage(brands_path, ['brand', 'url_count'])
+    data_storage = CSVStorage(data_path, PARSING_COLUMN)
+
+    urls_storage.create_empty()
+    if not update:
+        data_storage.create_empty()
 
     # TODO: parse all car brands from kolesa, for more dynamic update
     # parse_brands = parse_brands(kolesa.kz)
 
     # parsing urls
-    # loop_urls = asyncio.get_event_loop()
-    # future_urls = asyncio.ensure_future(parse_urls(brands_storage, urls_storage))
-    # loop_urls.run_until_complete(future_urls)
+    loop_urls = asyncio.get_event_loop()
+    future_urls = asyncio.ensure_future(parse_urls(brands_storage, urls_storage))
+    loop_urls.run_until_complete(future_urls)
 
     # preparing list of needed urls
-    prepared_urls = get_prepared_urls(urls_storage)
-
-    # create data storage
-    data_storage = CSVStorage(data_path, ['brand', 'model', 'year', 'city', 'latitude', 'longitude', 'price', 'mileage',
-                                          'capacity', 'body', 'color', 'transmission', 'drive', 'url'])
-    if update:
-        prepared_urls = pd.DataFrame(prepared_urls)
-        prepared_urls = prepared_urls[0]
-        parsed_urls = pd.read_csv(data_path)
-        parsed_urls = parsed_urls['url']
-        prepared_urls = pd.concat([prepared_urls, parsed_urls, parsed_urls]).drop_duplicates(keep=False)
-    else:
-        data_storage.create_table()
+    prepared_urls = get_prepared_urls(data_storage, urls_storage, update)
 
     # parsing data
     loop = asyncio.get_event_loop()

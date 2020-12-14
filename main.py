@@ -27,7 +27,7 @@ if __name__ == "__main__":
             run_parser(path_to_file, update)
         else:
             exit()
-    predict = get_predict_model(path_to_file, 'DTR')
+    # predict = get_predict_model(path_to_file, 'DTR')
     # print(predict.get_predict('Toyota Camry', '2012', 'Алматы', '171000', '2.5', 'Да'))
     # print(predict.get_predict('ВАЗ (Lada) 2170 (седан)', '2011', 'Алматы', '', '1.6', 'Да'))
     # print(predict.get_predict('Nissan Primera', '2002', 'Алматы', None, '2', 'Да'))
