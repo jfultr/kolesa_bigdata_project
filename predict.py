@@ -32,15 +32,12 @@ class CombinedAttributesAdder(BaseEstimator, TransformerMixin):
 
 
 class Predictor:
-    def __init__(self):
-        self.model = None
-        self.transformer = None
-
-    def set_predictor(self, model):
+    def __init__(self, model, transformer):
         self.model = model
-
-    def set_transformer(self, transformer):
         self.transformer = transformer
+        self.mae = None
+        self.mse = None
+        self.acc = None
 
     def get_predict(self, name, year, city, mileage, capacity, bordered):
         data_dict = {'year': [year], 'city': [city], 'mileage': [mileage], 'capacity': [capacity],
@@ -181,7 +178,7 @@ def get_model(kind, prepared_data, data_labels):
 
 
 @loading_models
-def get_tune_model(kind, model, prepared_data, data_labels):
+def get_tuned_model(kind, model, prepared_data, data_labels):
     params = \
         {'RFR':
             [
@@ -216,9 +213,19 @@ def check_cross_val_score(model, prepared_data, data_labels):
     print(tree_rmse_scores)
 
 
-def get_predict_model(path, model_kind):
-    predictor = Predictor()
+def test_model(predictor, test_set):
+    x_test = test_set.drop('price', axis=1)
+    y_test = test_set['price'].copy()
 
+    x_test_prepared = predictor.transformer.transform(x_test)
+    final_prediction = predictor.model.predict(x_test_prepared)
+
+    predictor.mae = mean_absolute_error(y_test, final_prediction)
+    predictor.mse = mean_squared_error(y_test, final_prediction)
+    predictor.acc = r2_score(y_test, final_prediction)
+
+
+def get_predict_model(path, model_kind):
     data = load_data(path)
     data = data.drop('url', axis=1)
 
@@ -226,27 +233,12 @@ def get_predict_model(path, model_kind):
     prepared_data, data_labels, full_pipeline = preprocessing(train_set)
 
     model = get_model(model_kind, prepared_data, data_labels, load=True)
-    search = get_tune_model(model_kind, model, prepared_data, data_labels, load=True)
+    search = get_tuned_model(model_kind, model, prepared_data, data_labels, load=True)
 
     final_model = search.best_estimator_
 
-    x_test = test_set.drop('price', axis=1)
-    y_test = test_set['price'].copy()
-
-    x_test_prepared = full_pipeline.transform(x_test)
-    final_prediction = final_model.predict(x_test_prepared)
-
-    predictor.set_transformer(full_pipeline)
-    predictor.set_predictor(final_model)
-
-    final_mae = mean_absolute_error(y_test, final_prediction)
-    final_mse = mean_squared_error(y_test, final_prediction)
-    final_acc = r2_score(y_test, final_prediction)
-
-    print('mae', final_mae)
-    print('mse', final_mse)
-    print('R2 score', final_acc)
-
+    predictor = Predictor(final_model, full_pipeline)
+    test_model(predictor, test_set)
     return predictor
 
 
